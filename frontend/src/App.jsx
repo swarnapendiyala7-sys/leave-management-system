@@ -9,8 +9,8 @@ function App() {
   const [page, setPage] = useState("login");
   const [activePage, setActivePage] = useState("dashboard");
 
-  const [email, setEmail] = useState("test@example.com");
-  const [password, setPassword] = useState("TestPassword123");
+  const [email, setEmail] = useState("testemployee@gmail.com");
+  const [password, setPassword] = useState("Test@12345");
 
   const [message, setMessage] = useState("");
   const [employee, setEmployee] = useState(null);
@@ -20,6 +20,25 @@ function App() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
+
+  // =========================
+  // GET AUTH TOKEN
+  // =========================
+  const getToken = () => {
+    return localStorage.getItem("token");
+  };
+
+  // =========================
+  // AUTH HEADERS
+  // =========================
+  const authHeaders = () => {
+    const token = getToken();
+
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+  };
 
   // =========================
   // LOGIN
@@ -47,41 +66,64 @@ function App() {
         return;
       }
 
-      setEmployee(data.employee);
+      // Save JWT token
       localStorage.setItem("token", data.access_token);
+
+      // Save employee information
+      setEmployee(data.employee);
 
       setActivePage("dashboard");
 
       if (data.employee.role === "MANAGER") {
         setPage("manager");
+
+        // Load manager pending leaves
+        loadPendingLeaves();
       } else {
         setPage("employee");
+
+        // Load employee leaves
+        loadMyLeaves();
       }
-    } catch {
-      setMessage("Cannot connect to backend. Is FastAPI running?");
+
+      setMessage("");
+    } catch (error) {
+      setMessage(
+        "Cannot connect to backend. Please make sure FastAPI is running."
+      );
     }
   };
 
   // =========================
-  // LOAD EMPLOYEE LEAVES
+  // LOAD MY LEAVES
   // =========================
-  const loadLeaves = async () => {
-    if (!employee) return;
+  const loadMyLeaves = async () => {
+    const token = getToken();
+
+    if (!token) {
+      setMessage("Please login again.");
+      return;
+    }
 
     try {
-      const response = await fetch(
-        `${API_URL}/leaves/employee/${employee.id}`
-      );
+      const response = await fetch(`${API_URL}/leaves/my`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       const data = await response.json();
 
-      if (response.ok) {
-        setLeaves(data);
-      } else {
-        setMessage(data.detail || "Could not load leaves");
+      if (!response.ok) {
+        setMessage(data.detail || "Could not load your leaves");
+        return;
       }
-    } catch {
-      setMessage("Could not connect to backend.");
+
+      setLeaves(data);
+    } catch (error) {
+      setMessage("Cannot connect to backend.");
     }
   };
 
@@ -89,17 +131,31 @@ function App() {
   // LOAD PENDING LEAVES
   // =========================
   const loadPendingLeaves = async () => {
+    const token = getToken();
+
+    if (!token) {
+      setMessage("Please login again.");
+      return;
+    }
+
     try {
-      const response = await fetch(`${API_URL}/leaves/pending`);
+      const response = await fetch(`${API_URL}/leaves/pending`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       const data = await response.json();
 
-      if (response.ok) {
-        setLeaves(data);
-      } else {
+      if (!response.ok) {
         setMessage(data.detail || "Could not load pending leaves");
+        return;
       }
-    } catch {
+
+      setLeaves(data);
+    } catch (error) {
       setMessage("Cannot connect to backend.");
     }
   };
@@ -111,22 +167,27 @@ function App() {
     e.preventDefault();
     setMessage("");
 
+    const token = getToken();
+
+    if (!token) {
+      setMessage("Please login again.");
+      return;
+    }
+
     try {
-      const response = await fetch(
-        `${API_URL}/leaves?employee_id=${employee.id}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            leave_type_id: Number(leaveType),
-            start_date: startDate,
-            end_date: endDate,
-            reason: reason,
-          }),
-        }
-      );
+      const response = await fetch(`${API_URL}/leaves`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          leave_type_id: Number(leaveType),
+          start_date: startDate,
+          end_date: endDate,
+          reason: reason,
+        }),
+      });
 
       const data = await response.json();
 
@@ -141,23 +202,31 @@ function App() {
       setEndDate("");
       setReason("");
 
-      loadLeaves();
-    } catch {
+      await loadMyLeaves();
+    } catch (error) {
       setMessage("Cannot connect to backend.");
     }
   };
 
   // =========================
-  // APPROVE / REJECT
+  // APPROVE / REJECT LEAVE
   // =========================
   const reviewLeave = async (leaveId, status) => {
+    const token = getToken();
+
+    if (!token) {
+      setMessage("Please login again.");
+      return;
+    }
+
     try {
       const response = await fetch(
-        `${API_URL}/leaves/${leaveId}/review?reviewer_id=${employee.id}`,
+        `${API_URL}/leaves/${leaveId}/review`,
         {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             status: status,
@@ -182,8 +251,8 @@ function App() {
           : "Leave rejected successfully! ❌"
       );
 
-      loadPendingLeaves();
-    } catch {
+      await loadPendingLeaves();
+    } catch (error) {
       setMessage("Cannot connect to backend.");
     }
   };
@@ -205,99 +274,95 @@ function App() {
   // LOGIN PAGE
   // =========================
   if (page === "login") {
-  return (
-    <div
-  className="login-page"
-  style={{
-    backgroundImage: `url(${leaveBackground})`,
-  }}
->
+    return (
+      <div
+        className="login-page"
+        style={{
+          backgroundImage: `url(${leaveBackground})`,
+        }}
+      >
+        <div className="login-card">
 
-      <div className="login-card">
+          <div className="login-logo">
+            🏖️
+          </div>
 
-        <div className="login-logo">
-          🏖️
+          <h1>LeaveFlow</h1>
+
+          <p className="subtitle">
+            Leave Management System
+          </p>
+
+          <form onSubmit={login}>
+
+            <label>Email Address</label>
+
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter your email"
+              required
+            />
+
+            <label>Password</label>
+
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your password"
+              required
+            />
+
+            <button type="submit">
+              Login to LeaveFlow →
+            </button>
+
+          </form>
+
+          {message && (
+            <p className="message">
+              {message}
+            </p>
+          )}
+
+          <div className="demo-box">
+            <strong>Demo Account</strong>
+
+            <p>
+              Employee: testemployee@gmail.com
+            </p>
+
+            <p>
+              Password: Test@12345
+            </p>
+          </div>
+
         </div>
-
-        <h1>LeaveFlow</h1>
-
-        <p className="subtitle">
-          Leave Management System
-        </p>
-
-        <form onSubmit={login}>
-
-          <label>Email Address</label>
-
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Enter your email"
-            required
-          />
-
-          <label>Password</label>
-
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
-            required
-          />
-
-          <button type="submit">
-            Login to LeaveFlow →
-          </button>
-
-        </form>
-
-        {message && (
-          <p className="message">
-            {message}
-          </p>
-        )}
-
-        <div className="demo-box">
-
-          <strong>Demo Accounts</strong>
-
-          <p>
-            Employee: test@example.com
-          </p>
-
-          <p>
-            Manager: manager@example.com
-          </p>
-
-        </div>
-
       </div>
+    );
+  }
 
-    </div>
-  );
-}
-  // =====================================================
-  // MAIN APPLICATION WITH LEFT SIDEBAR
-  // =====================================================
+  // =========================
+  // MAIN APPLICATION
+  // =========================
   return (
     <div
-  className="app"
-  style={{
-    backgroundImage: `url(${dashboardBackground})`,
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundAttachment: "fixed",
-  }}
->
+      className="app"
+      style={{
+        backgroundImage: `url(${dashboardBackground})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundAttachment: "fixed",
+      }}
+    >
 
-      {/* =========================
-          SIDEBAR
-      ========================= */}
+      {/* SIDEBAR */}
       <aside className="sidebar">
 
         <div className="sidebar-logo">
+
           <div className="logo-icon">
             LM
           </div>
@@ -306,9 +371,11 @@ function App() {
             <h2>LeaveFlow</h2>
             <span>Management System</span>
           </div>
+
         </div>
 
         <div className="sidebar-user">
+
           <div className="user-avatar">
             {employee?.name?.charAt(0)}
           </div>
@@ -317,6 +384,7 @@ function App() {
             <strong>{employee?.name}</strong>
             <small>{employee?.role}</small>
           </div>
+
         </div>
 
         <nav className="sidebar-nav">
@@ -330,11 +398,12 @@ function App() {
             }
             onClick={() => {
               setActivePage("dashboard");
+              setMessage("");
 
               if (employee?.role === "MANAGER") {
                 loadPendingLeaves();
               } else {
-                loadLeaves();
+                loadMyLeaves();
               }
             }}
           >
@@ -342,7 +411,7 @@ function App() {
             <span>Dashboard</span>
           </button>
 
-          {/* EMPLOYEE OPTIONS */}
+          {/* EMPLOYEE MENU */}
           {employee?.role !== "MANAGER" && (
             <>
               <button
@@ -369,7 +438,7 @@ function App() {
                 onClick={() => {
                   setActivePage("my-leaves");
                   setMessage("");
-                  loadLeaves();
+                  loadMyLeaves();
                 }}
               >
                 <span className="nav-icon">📋</span>
@@ -378,7 +447,7 @@ function App() {
             </>
           )}
 
-          {/* MANAGER OPTIONS */}
+          {/* MANAGER MENU */}
           {employee?.role === "MANAGER" && (
             <>
               <button
@@ -431,9 +500,7 @@ function App() {
 
       </aside>
 
-      {/* =========================
-          MAIN CONTENT
-      ========================= */}
+      {/* MAIN CONTENT */}
       <main className="main-content">
 
         {/* TOP BAR */}
@@ -452,6 +519,7 @@ function App() {
           </div>
 
           <div className="topbar-user">
+
             <div className="top-avatar">
               {employee?.name?.charAt(0)}
             </div>
@@ -460,26 +528,26 @@ function App() {
               <strong>{employee?.name}</strong>
               <span>{employee?.department}</span>
             </div>
+
           </div>
 
         </header>
 
         <div className="content-area">
 
-          {/* =========================
-              DASHBOARD
-          ========================= */}
+          {/* DASHBOARD */}
           {activePage === "dashboard" && (
             <>
               <div className="welcome">
+
                 <h1>
                   Welcome, {employee?.name} 👋
                 </h1>
 
                 <p>
-                  {employee?.department} •{" "}
-                  {employee?.role}
+                  {employee?.department} • {employee?.role}
                 </p>
+
               </div>
 
               <div className="cards">
@@ -497,6 +565,7 @@ function App() {
                 </div>
 
                 <div className="card">
+
                   <h3>
                     Department
                   </h3>
@@ -504,9 +573,11 @@ function App() {
                   <strong>
                     {employee?.department}
                   </strong>
+
                 </div>
 
                 <div className="card">
+
                   <h3>
                     {employee?.role === "MANAGER"
                       ? "Pending Leaves"
@@ -516,6 +587,7 @@ function App() {
                   <strong>
                     {leaves.length}
                   </strong>
+
                 </div>
 
               </div>
@@ -531,12 +603,11 @@ function App() {
                 </p>
 
               </div>
+
             </>
           )}
 
-          {/* =========================
-              APPLY LEAVE
-          ========================= */}
+          {/* APPLY LEAVE */}
           {activePage === "apply" &&
             employee?.role !== "MANAGER" && (
               <div className="section">
@@ -627,9 +698,7 @@ function App() {
               </div>
             )}
 
-          {/* =========================
-              MY LEAVES
-          ========================= */}
+          {/* MY LEAVES */}
           {activePage === "my-leaves" &&
             employee?.role !== "MANAGER" && (
               <div className="section">
@@ -640,7 +709,7 @@ function App() {
                     My Leave Requests
                   </h2>
 
-                  <button onClick={loadLeaves}>
+                  <button onClick={loadMyLeaves}>
                     Refresh
                   </button>
 
@@ -666,8 +735,7 @@ function App() {
                           </h3>
 
                           <p>
-                            {leave.start_date} →{" "}
-                            {leave.end_date}
+                            {leave.start_date} → {leave.end_date}
                           </p>
 
                           <p>
@@ -691,9 +759,7 @@ function App() {
               </div>
             )}
 
-          {/* =========================
-              MANAGER PENDING LEAVES
-          ========================= */}
+          {/* MANAGER PENDING LEAVES */}
           {activePage === "pending" &&
             employee?.role === "MANAGER" && (
               <div className="section">
@@ -704,9 +770,7 @@ function App() {
                     Pending Leave Requests
                   </h2>
 
-                  <button
-                    onClick={loadPendingLeaves}
-                  >
+                  <button onClick={loadPendingLeaves}>
                     Refresh
                   </button>
 
@@ -732,26 +796,20 @@ function App() {
                           </h3>
 
                           <p>
-                            Employee ID:{" "}
-                            {leave.employee_id}
+                            Employee ID: {leave.employee_id}
                           </p>
 
                           <p>
-                            {leave.start_date} →{" "}
-                            {leave.end_date}
+                            {leave.start_date} → {leave.end_date}
                           </p>
 
                           <p>
-                            <strong>
-                              Reason:
-                            </strong>{" "}
+                            <strong>Reason:</strong>{" "}
                             {leave.reason}
                           </p>
 
                           <p>
-                            <strong>
-                              Status:
-                            </strong>{" "}
+                            <strong>Status:</strong>{" "}
                             {leave.status}
                           </p>
 
@@ -798,9 +856,7 @@ function App() {
               </div>
             )}
 
-          {/* =========================
-              MANAGER REQUESTS
-          ========================= */}
+          {/* MANAGER REQUESTS */}
           {activePage === "requests" &&
             employee?.role === "MANAGER" && (
               <div className="section">
@@ -811,9 +867,7 @@ function App() {
                     Leave Requests
                   </h2>
 
-                  <button
-                    onClick={loadPendingLeaves}
-                  >
+                  <button onClick={loadPendingLeaves}>
                     Refresh
                   </button>
 
@@ -839,19 +893,15 @@ function App() {
                           </h3>
 
                           <p>
-                            Employee ID:{" "}
-                            {leave.employee_id}
+                            Employee ID: {leave.employee_id}
                           </p>
 
                           <p>
-                            {leave.start_date} →{" "}
-                            {leave.end_date}
+                            {leave.start_date} → {leave.end_date}
                           </p>
 
                           <p>
-                            <strong>
-                              Reason:
-                            </strong>{" "}
+                            <strong>Reason:</strong>{" "}
                             {leave.reason}
                           </p>
 
@@ -879,4 +929,6 @@ function App() {
     </div>
   );
 }
+
 export default App;
+

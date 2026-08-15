@@ -1,4 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+
+from app.api.dependencies import get_current_employee, require_manager
+from app.models.employee import Employee
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -25,30 +28,30 @@ router = APIRouter(
     status_code=status.HTTP_201_CREATED,
 )
 def apply_for_leave(
-    employee_id: int,
     leave_data: LeaveCreate,
+    current_employee: Employee = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     leave = create_leave(
-        db,
-        employee_id,
-        leave_data,
-    )
+    db,
+    current_employee.id,
+    leave_data,
+)
 
     return leave
 
 
 @router.get(
-    "/employee/{employee_id}",
+    "/my",
     response_model=list[LeaveResponse],
 )
-def list_employee_leaves(
-    employee_id: int,
+def list_my_leaves(
+    current_employee: Employee = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     return get_employee_leaves(
         db,
-        employee_id,
+        current_employee.id,
     )
 
 
@@ -57,10 +60,10 @@ def list_employee_leaves(
     response_model=list[LeaveResponse],
 )
 def list_pending_leaves(
+    current_manager: Employee = Depends(require_manager),
     db: Session = Depends(get_db),
 ):
     return get_pending_leaves(db)
-
 
 @router.get(
     "/{leave_id}",
@@ -90,8 +93,8 @@ def get_leave(
 )
 def review_leave_request(
     leave_id: int,
-    reviewer_id: int,
     review_data: LeaveReview,
+    current_manager: Employee = Depends(require_manager),
     db: Session = Depends(get_db),
 ):
     leave = get_leave_by_id(
@@ -114,7 +117,7 @@ def review_leave_request(
     return review_leave(
         db,
         leave,
-        reviewer_id,
+        current_manager.id,
         review_data,
     )
 
@@ -125,6 +128,7 @@ def review_leave_request(
 )
 def cancel_leave_request(
     leave_id: int,
+    current_employee: Employee = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     leave = get_leave_by_id(
@@ -136,6 +140,12 @@ def cancel_leave_request(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Leave not found",
+        )
+
+    if leave.employee_id != current_employee.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only cancel your own leave requests",
         )
 
     if leave.status != "PENDING":
