@@ -3,7 +3,7 @@ import "./App.css";
 import leaveBackground from "./assets/leave-background.jpg";
 import dashboardBackground from "./assets/dashboard-background.jpg";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 function App() {
   const [page, setPage] = useState("login");
