@@ -1258,7 +1258,7 @@ button:hover {
     width: 235px;
   }
 
-  ..main-content {
+  .main-content {
   width: calc(100% - 270px);
   margin-left: 270px;
   padding: 35px 5% 70px;
